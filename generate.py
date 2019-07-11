@@ -36,34 +36,15 @@ def get_arguments():
         return float(f)
 
     parser = argparse.ArgumentParser(description='WaveNet generation script')
+    parser.add_argument('checkpoint', type=str, help='Which model checkpoint to generate from')
+    parser.add_argument('--samples', type=int, default=SAMPLES, help='How many waveform samples to generate')
+    parser.add_argument('--temperature', type=_ensure_positive_float, default=TEMPERATURE, help='Sampling temperature')
     parser.add_argument(
-        'checkpoint', type=str, help='Which model checkpoint to generate from')
+        '--logdir', type=str, default=LOGDIR,
+        help='Directory in which to store the logging information for TensorBoard.')
     parser.add_argument(
-        '--samples',
-        type=int,
-        default=SAMPLES,
-        help='How many waveform samples to generate')
-    parser.add_argument(
-        '--temperature',
-        type=_ensure_positive_float,
-        default=TEMPERATURE,
-        help='Sampling temperature')
-    parser.add_argument(
-        '--logdir',
-        type=str,
-        default=LOGDIR,
-        help='Directory in which to store the logging '
-        'information for TensorBoard.')
-    parser.add_argument(
-        '--wavenet_params',
-        type=str,
-        default=WAVENET_PARAMS,
-        help='JSON file with the network parameters')
-    parser.add_argument(
-        '--wav_out_path',
-        type=str,
-        default=None,
-        help='Path to output wav file')
+        '--wavenet_params', type=str, default=WAVENET_PARAMS, help='JSON file with the network parameters')
+    parser.add_argument('--wav_out_path', type=str, default=None, help='Path to output wav file')
     parser.add_argument(
         '--save_every',
         type=int,
@@ -224,29 +205,24 @@ def main():
         # Scale prediction distribution using temperature.
         np.seterr(divide='ignore')
         scaled_prediction = np.log(prediction) / args.temperature
-        scaled_prediction = (scaled_prediction -
-                             np.logaddexp.reduce(scaled_prediction))
+        scaled_prediction = (scaled_prediction - np.logaddexp.reduce(scaled_prediction))
         scaled_prediction = np.exp(scaled_prediction)
         np.seterr(divide='warn')
 
-        # Prediction distribution at temperature=1.0 should be unchanged after
-        # scaling.
+        # Prediction distribution at temperature=1.0 should be unchanged after scaling.
         if args.temperature == 1.0:
             np.testing.assert_allclose(
                     prediction, scaled_prediction, atol=1e-5,
-                    err_msg='Prediction scaling at temperature=1.0 '
-                            'is not working as intended.')
+                    err_msg='Prediction scaling at temperature=1.0 is not working as intended.')
 
-        sample = np.random.choice(
-            np.arange(quantization_channels), p=scaled_prediction)
+        sample = np.random.choice(np.arange(quantization_channels), p=scaled_prediction)
         waveform.append(sample)
 
         # Show progress only once per second.
         current_sample_timestamp = datetime.now()
         time_since_print = current_sample_timestamp - last_sample_timestamp
         if time_since_print.total_seconds() > 1.:
-            print('Sample {:3<d}/{:3<d}'.format(step + 1, args.samples),
-                  end='\r')
+            print('Sample {:3<d}/{:3<d}'.format(step + 1, args.samples), end='\r')
             last_sample_timestamp = current_sample_timestamp
 
         # If we have partial writing, save the result so far.
@@ -263,8 +239,7 @@ def main():
     writer = tf.summary.FileWriter(logdir)
     tf.summary.audio('generated', decode, wavenet_params['sample_rate'])
     summaries = tf.summary.merge_all()
-    summary_out = sess.run(summaries,
-                           feed_dict={samples: np.reshape(waveform, [-1, 1])})
+    summary_out = sess.run(summaries, feed_dict={samples: np.reshape(waveform, [-1, 1])})
     writer.add_summary(summary_out)
 
     # Save the result as a wav file.
